@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Power Flow Explorer</title>
+<style>
+:root {
+  --bg: #F5F5F7; --panel: #FFFFFF; --panel-2: #F5F5F7; --ink: #1D1D1F; --text: #424245; --muted: #6E6E73;
+  --line: #E5E5EA; --line-strong: #D2D2D7;
+  --accent: #8C2043; --accent-soft: #F6E8ED; --on-accent: #FFFFFF;
+  --orange: #E5751F; --orange-text: #B35409; --orange-soft: #FDEBDC;
+  --warn: #8A5300; --warn-bg: #FFF4E0; --err: #B3261E; --err-bg: #FCEDEC;
+  --edge: #AEAEB2; --node: #FFFFFF;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.06);
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #000000; --panel: #1C1C1E; --panel-2: #2C2C2E; --ink: #F5F5F7; --text: #D1D1D6; --muted: #98989D;
+    --line: #38383A; --line-strong: #48484A;
+    --accent: #E36A90; --accent-soft: #3A1C27; --on-accent: #1C1C1E;
+    --orange: #FF9F0A; --orange-text: #FFB340; --orange-soft: #3A2A12;
+    --warn: #FFD60A; --warn-bg: #332B0A; --err: #FF6961; --err-bg: #3B1D1B;
+    --edge: #636366; --node: #2C2C2E; --shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #000000; --panel: #1C1C1E; --panel-2: #2C2C2E; --ink: #F5F5F7; --text: #D1D1D6; --muted: #98989D;
+  --line: #38383A; --line-strong: #48484A;
+  --accent: #E36A90; --accent-soft: #3A1C27; --on-accent: #1C1C1E;
+  --orange: #FF9F0A; --orange-text: #FFB340; --orange-soft: #3A2A12;
+  --warn: #FFD60A; --warn-bg: #332B0A; --err: #FF6961; --err-bg: #3B1D1B;
+  --edge: #636366; --node: #2C2C2E; --shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; letter-spacing: -0.005em; }
+select, button, input { font: inherit; color: inherit; }
+.app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; padding-inline: 20px; padding-block: 16px; }
+
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.brand h1 { margin: 0; font: 600 24px/1.15 var(--display); color: var(--ink); letter-spacing: -0.022em; text-wrap: balance; }
+.brand p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+select { appearance: none; -webkit-appearance: none; background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2386868B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center; border: 1px solid var(--line-strong); border-radius: 8px; padding: 5px 28px 5px 10px; color: var(--ink); box-shadow: var(--shadow); }
+.btn { background: var(--line); border: 0; border-radius: 999px; padding: 6px 14px; color: var(--ink); cursor: pointer; font-weight: 500; }
+.btn:hover { background: var(--line-strong); }
+.btn.accent { background: var(--accent); color: var(--on-accent); }
+.btn.accent:hover { filter: brightness(1.08); }
+input[type="range"] { accent-color: var(--accent); }
+.ctl input[type="range"] { width: 150px; }
+output, .num-out { font-family: var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.ctl output { min-width: 62px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1fr); gap: 14px; min-height: 0; }
+.col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.card { background: var(--panel); border-radius: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.card.grow { flex: 1; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 14px 18px 0; }
+.card-head h2 { margin: 0; font: 600 15px/1.3 var(--display); color: var(--ink); letter-spacing: -0.01em; }
+.hint { font-size: 12px; color: var(--muted); }
+.card-body { padding: 12px 18px 16px; overflow: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1; }
+.mono { font-family: var(--mono); }
+.label { margin: 0; font-size: 12px; color: var(--muted); font-weight: 500; }
+
+.matrix-wrap { overflow-x: auto; }
+table.matrix { border-collapse: separate; border-spacing: 2px; font-family: var(--mono); font-size: 12px; }
+table.matrix th { font-weight: 500; color: var(--muted); text-align: center; padding: 0 2px; }
+table.matrix th.colh { vertical-align: bottom; min-width: 26px; }
+table.matrix th.colh.split { color: var(--orange-text); }
+.lam { display: block; font-size: 11px; line-height: 1.1; color: var(--orange-text); }
+table.matrix th.rowh { text-align: left; white-space: nowrap; font-family: var(--sans); font-size: 12.5px; color: var(--ink); padding-right: 6px; }
+.rowh .sym { font-family: var(--mono); color: var(--muted); font-size: 11px; margin-left: 5px; }
+.rm { border: 0; background: none; color: var(--muted); cursor: pointer; width: 18px; height: 18px; border-radius: 999px; line-height: 1; padding: 0; margin-right: 3px; font-size: 15px; }
+.rm:hover { color: var(--err); background: var(--err-bg); }
+.rm[disabled] { visibility: hidden; }
+.cell { width: 26px; height: 26px; border-radius: 8px; border: 0; background: var(--panel-2); color: var(--muted); font: 500 12.5px var(--mono); cursor: pointer; padding: 0; transition: transform 0.12s ease, background 0.12s ease; }
+.cell:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cell:active { transform: scale(0.94); }
+.cell.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.cell.on.off-rule { background: var(--orange-soft); color: var(--orange-text); box-shadow: inset 0 0 0 1.5px var(--orange); }
+.cell:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+.cell:focus-visible, .btn:focus-visible, select:focus-visible, input:focus-visible, .rm:focus-visible, .chip:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
+td.eff { padding-left: 4px; }
+td.eff input { width: 54px; padding: 4px 5px; border: 0; border-radius: 6px; background: var(--panel-2); color: var(--ink); font: 11.5px var(--mono); }
+td.eff .na { font-size: 11.5px; color: var(--muted); font-family: var(--sans); white-space: nowrap; }
+.legend { font-size: 12px; color: var(--muted); margin: 0; }
+.addbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.addbar .label { margin-right: 4px; }
+.chip { border: 0; background: var(--panel-2); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.chip:hover { color: var(--accent); background: var(--accent-soft); }
+
+.graph svg { width: 100%; height: auto; display: block; max-height: 340px; }
+.edge { fill: none; stroke: var(--edge); stroke-linecap: round; }
+.edge.bad { stroke: var(--orange); stroke-dasharray: 7 6; }
+.edge.neg { stroke: var(--err); }
+.arrow { fill: var(--edge); }
+.arrow-o { fill: var(--orange); }
+.node rect { fill: var(--node); stroke: var(--line-strong); stroke-width: 1; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08)); }
+.node.split rect { fill: var(--orange-soft); stroke: var(--orange); stroke-width: 2; }
+.node.idle rect { stroke-dasharray: 5 4; opacity: 0.6; }
+.nname { font: 600 17px var(--sans); fill: var(--ink); letter-spacing: -0.01em; }
+.nval { font: 500 15px var(--mono); fill: var(--accent); }
+.elabel { font: 500 14px var(--mono); fill: var(--muted); paint-order: stroke; stroke: var(--panel); stroke-width: 5px; stroke-linejoin: round; }
+
+.formula { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--panel-2); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--panel-2); border-radius: 12px; padding: 8px 12px; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font: 600 20px/1.25 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+.eqs { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px; }
+.eq { padding: 8px 12px; border-radius: 12px; background: var(--panel-2); box-shadow: inset 0 0 0 1.5px transparent; }
+.eq .sym { font-family: var(--mono); font-size: 13px; color: var(--ink); line-height: 1.6; }
+.eq .num { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.eq .num b { color: var(--accent); font-weight: 600; }
+.tag { font-family: var(--sans); font-size: 11px; color: var(--muted); background: var(--panel); border-radius: 999px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; }
+.eq.flash { animation: flash 1.8s ease-out; }
+@keyframes flash { 0% { background: var(--orange-soft); box-shadow: inset 0 0 0 1.5px var(--orange); } 100% { background: var(--panel-2); box-shadow: inset 0 0 0 1.5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .eq.flash { animation: none; box-shadow: inset 0 0 0 1.5px var(--orange); } .cell { transition: none; } }
+.foot { font-size: 11.5px; color: var(--muted); margin: 0; }
+
+[hidden] { display: none !important; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--panel); }
+.seg button { border: 0; background: transparent; border-radius: 7px; padding: 4px 10px; font-size: 12.5px; font-weight: 500; color: var(--text); cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--on-accent); }
+.seg button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+
+@media (max-width: 1060px) {
+  html, body, .app { height: auto; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .card, .card-body { overflow: visible; }
+  .card.grow { flex: none; }
+  .summary { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Power Flow Explorer</h1>
+      <p>Edit the adjacency matrix. Every change re-solves P = (I − M)<sup>−1</sup> P<sub>0</sub>.</p>
+    </div>
+    <div class="controls">
+      <label class="ctl" for="preset">Start from
+        <select id="preset"></select>
+      </label>
+      <button class="btn" id="reset" type="button">Reset</button>
+      <label class="ctl" for="thrust">Thrust power P<sub>0</sub>
+        <input id="thrust" type="range" min="0" max="1200" step="1" value="300">
+        <output id="thrust-out" for="thrust">300 kW</output>
+      </label>
+      <div class="seg" id="paper-cases" role="group" aria-label="Paper operating point" hidden></div>
+      <button class="btn accent" id="second-prop" type="button">Try: add a second propeller</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="col">
+      <section class="card grow">
+        <div class="card-head"><h2>Adjacency matrix A</h2><span class="hint">row → column</span></div>
+        <div class="card-body">
+          <div class="matrix-wrap" id="matrix"></div>
+          <p class="legend">Click a cell to connect or disconnect. A[row, column] = 1 means power flows from row to column. An orange <b>λ</b> marks a component with more than one supplier.</p>
+          <div class="addbar" id="addbar">
+            <span class="label">Add</span>
+            <button class="chip" type="button" data-add="engine">+ Engine</button>
+            <button class="chip" type="button" data-add="generator">+ Generator</button>
+            <button class="chip" type="button" data-add="motor">+ Motor</button>
+            <button class="chip" type="button" data-add="propeller">+ Propeller</button>
+            <button class="chip" type="button" data-add="battery">+ Battery</button>
+            <button class="chip" type="button" data-add="fuel">+ Fuel tank</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <div class="card-head"><h2>Architecture</h2><span class="hint">line width ∝ power</span></div>
+        <div class="card-body graph" id="graph"></div>
+      </section>
+      <section class="card grow">
+        <div class="card-head"><h2>Power flow</h2><span class="formula">P = M P + P<sub>0</sub> → P = (I − M)<sup>−1</sup> P<sub>0</sub></span></div>
+        <div class="card-body">
+          <div class="summary">
+            <div class="stat"><div class="k">Thrust power</div><div class="v" id="s-thrust">—</div></div>
+            <div class="stat"><div class="k">Fuel flow</div><div class="v" id="s-fuel">—</div></div>
+            <div class="stat"><div class="k">Battery power</div><div class="v" id="s-batt">—</div></div>
+          </div>
+          <div class="eqs" id="eqs"></div>
+          <p class="foot">Each component supplies its share λ of what its consumers draw, divided by the efficiencies on the way. The solve matches Mokotoff &amp; Cinar's Eq. (27). <span id="foot-note"></span></p>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  // kg of fuel per kWh of engine shaft power (series-hybrid Caravan psfc).
+  const PSFC = 1.013794644e-7 * 1000 * 3600;
+  const TYPES = {
+    battery:   { label: "Battery",   sym: "batt", col: 2, eff: null },
+    engine:    { label: "Engine",    sym: "eng",  col: 1, eff: null },
+    fuel:      { label: "Fuel tank", sym: "fuel", col: 0, eff: null },
+    generator: { label: "Generator", sym: "gen",  col: 2, eff: 0.95 },
+    motor:     { label: "Motor",     sym: "mot",  col: 3, eff: 0.97 },
+    propeller: { label: "Propeller", sym: "prop", col: 4, eff: 0.80 },
+    thrust:    { label: "Thrust",    sym: "thr",  col: 5, eff: null },
+  };
+  // ADORE's node order: alphabetical by component reference.
+  const ORDER = ["battery", "engine", "fuel", "generator", "motor", "propeller", "thrust"];
+  // The ports in Propulsion/architectures/build_adore_model.py.
+  const PORTS = {
+    "fuel>engine": "fuel supply", "engine>generator": "engine shaft", "engine>propeller": "engine shaft",
+    "battery>motor": "electrical power", "generator>motor": "electrical power", "motor>propeller": "motor shaft",
+    "propeller>thrust": "thrust",
+  };
+  const CARAVAN = "Caravan · ADORE design space";
+  const CARAVAN_NOTE = "Efficiencies from the series-hybrid Caravan configuration; connections are lossless. The engine's efficiency is in its psfc, 0.365 kg/kWh.";
+
+  // Chakraborty & Mishra (2023): Table 2 with cabling folded into the battery and
+  // generator (Sec. IV.E), Table 7 powers, as in test_chakraborty_mishra_2022_power_flow.py.
+  const PAPER = { motor: 0.95, gearbox: 0.99, generator: 0.97 * 0.985, battery: 0.96 * 0.985, packs: 5, tsAvailable: 0.78 * 375 };
+  const HOVER = [...Array(8).fill(123), 0];
+  const CRUISE = [...Array(8).fill(0), 366];
+  const EVTOL = "eVTOL · Chakraborty &amp; Mishra (2023)";
+  const EVTOL_NOTE = "Efficiencies from Chakraborty & Mishra's Table 2, cabling folded into the battery and generator; the 0.99 gearbox is on the turboshaft-to-generator connection. The paper's flow starts at motor shaft power, so the rotors pass it through (η = 1). The 8 identical lift motors and rotors are one node each; the flow is linear, so their totals are exact.";
+
+  function evtol(kind, turbogenerators) {
+    const electric = kind !== "turboelectric", thermal = kind !== "all-electric";
+    const nodes = [
+      electric && { key: "batt", type: "battery", label: "Batteries ×5", sym: "batt" },
+      thermal && { key: "ts", type: "engine", label: `Turboshafts ×${turbogenerators}`, sym: "ts" },
+      thermal && { key: "fuel", type: "fuel", label: "Fuel", sym: "fuel" },
+      thermal && { key: "gen", type: "generator", label: `Generators ×${turbogenerators}`, sym: "gen", eff: PAPER.generator },
+      { key: "lm", type: "motor", label: "Lift motors ×8", sym: "lm", eff: PAPER.motor },
+      { key: "cm", type: "motor", label: "Cruise motor", sym: "cm", eff: PAPER.motor },
+      { key: "lp", type: "propeller", label: "Lift rotors ×8", sym: "lp", eff: 1 },
+      { key: "cp", type: "propeller", label: "Cruise rotor", sym: "cp", eff: 1 },
+      { key: "thr", type: "thrust", label: "Thrust", sym: "thr" },
+    ].filter(Boolean);
+    const edges = [["lm", "lp"], ["cm", "cp"], ["lp", "thr"], ["cp", "thr"]];
+    if (electric) edges.push(["batt", "lm"], ["batt", "cm"]);
+    if (thermal) edges.push(["fuel", "ts"], ["ts", "gen"], ["gen", "lm"], ["gen", "cm"]);
+    return {
+      group: EVTOL, nodes, edges, pathEta: thermal ? [["ts", "gen", PAPER.gearbox]] : [],
+      psfc: null, note: EVTOL_NOTE,
+    };
+  }
+
+  const PRESETS = {
+    series_hybrid: { name: "Series hybrid", edges: [["fuel", "engine"], ["battery", "motor"], ["engine", "generator"], ["generator", "motor"], ["motor", "propeller"], ["propeller", "thrust"]], shares: [["motor", "battery", 0.2]] },
+    conventional: { name: "Conventional", edges: [["fuel", "engine"], ["engine", "propeller"], ["propeller", "thrust"]] },
+    battery_electric: { name: "Battery-electric", edges: [["battery", "motor"], ["motor", "propeller"], ["propeller", "thrust"]] },
+    turboelectric: { name: "Turboelectric", edges: [["fuel", "engine"], ["engine", "generator"], ["generator", "motor"], ["motor", "propeller"], ["propeller", "thrust"]] },
+    parallel_hybrid: { name: "Parallel hybrid", edges: [["fuel", "engine"], ["battery", "motor"], ["engine", "propeller"], ["motor", "propeller"], ["propeller", "thrust"]] },
+    mechanical_electric_parallel: { name: "Mechanical-electric parallel", edges: [["fuel", "engine"], ["engine", "generator"], ["engine", "propeller"], ["generator", "motor"], ["motor", "propeller"], ["propeller", "thrust"]] },
+    series_parallel_hybrid: { name: "Series-parallel hybrid", edges: [["fuel", "engine"], ["battery", "motor"], ["engine", "generator"], ["engine", "propeller"], ["generator", "motor"], ["motor", "propeller"], ["propeller", "thrust"]], shares: [["motor", "battery", 0.2]] },
+    evtol_all_electric: {
+      name: "All-electric", ...evtol("all-electric"),
+      paper: { kind: "all-electric", eq: "Eq. (A1)", cases: [{ name: "Hover", shaft: HOVER }, { name: "Cruise", shaft: CRUISE }] },
+    },
+    evtol_turboelectric: {
+      name: "Turboelectric", ...evtol("turboelectric", 3),
+      paper: { kind: "turboelectric", eq: "Eq. (A2)", cases: [{ name: "Hover", shaft: HOVER }, { name: "Cruise", shaft: CRUISE }] },
+    },
+    evtol_hybrid_electric: {
+      name: "Hybrid-electric", ...evtol("hybrid-electric", 2),
+      paper: { kind: "hybrid-electric", eq: "Eq. (2)", cases: [
+        // Nominal: the battery is off and the turbogenerators carry the cruise.
+        { name: "Cruise, nominal", shaft: CRUISE, closure: [[1, 0, 0, 0, 0], [0, 0, 0, 1, 0]] },
+        // Offset: each turboshaft runs at its 292.5 kW hover limit and the battery covers the rest.
+        { name: "Hover, offset", shaft: HOVER, closure: [[0, 0, 1, 0, PAPER.tsAvailable], [0, 0, 0, 1, 0]] },
+      ] },
+    },
+  };
+
+  const state = { preset: "series_hybrid", nodes: [], edges: new Set(), shares: {}, pathEta: {}, thrustKw: 300, psfc: PSFC, paperCase: 0 };
+  let serial = 0;
+  let prevSym = {};
+  let flashOn = false;
+
+  const $ = (s) => document.querySelector(s);
+  const key = (s, c) => `${s}>${c}`;
+  const byId = (id) => state.nodes.find((n) => n.id === id);
+  const byKey = (k) => state.nodes.find((n) => n.key === k);
+  const fmt = (x) => (Math.abs(x) < 0.05 ? "0.0" : x.toFixed(1));
+  const fmtEta = (v) => { const s = String(+v.toFixed(4)); return s.includes(".") ? s.padEnd(4, "0") : `${s}.00`; };
+  const etaOf = (s, c) => state.pathEta[key(s, c)] ?? 1;
+  const suppliers = (id) => state.nodes.filter((n) => state.edges.has(key(n.id, id)));
+  const consumers = (id) => state.nodes.filter((n) => state.edges.has(key(id, n.id)));
+
+  function addNode(type, spec = {}) {
+    const node = { id: `${type}-${++serial}`, type, serial, eff: spec.eff ?? TYPES[type].eff ?? 1, key: spec.key, label: spec.label, sym: spec.sym };
+    state.nodes.push(node);
+    state.nodes.sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type) || a.serial - b.serial);
+    return node;
+  }
+
+  function removeNode(id) {
+    state.nodes = state.nodes.filter((n) => n.id !== id);
+    for (const k of [...state.edges]) if (k.split(">").includes(id)) state.edges.delete(k);
+    for (const k of Object.keys(state.pathEta)) if (k.split(">").includes(id)) delete state.pathEta[k];
+    delete state.shares[id];
+    for (const c of Object.keys(state.shares)) delete state.shares[c][id];
+  }
+
+  function loadPreset(name) {
+    const preset = PRESETS[name];
+    Object.assign(state, {
+      preset: name, nodes: [], edges: new Set(), shares: {}, pathEta: {}, thrustKw: 300,
+      psfc: "psfc" in preset ? preset.psfc : PSFC, paperCase: 0,
+    });
+    const used = new Set(preset.edges.flat().concat("thrust"));
+    const specs = preset.nodes || ORDER.filter((t) => used.has(t)).map((t) => ({ key: t, type: t }));
+    const made = {};
+    for (const spec of specs) made[spec.key] = addNode(spec.type, spec);
+    for (const [s, c] of preset.edges) state.edges.add(key(made[s].id, made[c].id));
+    for (const [c, s, v] of preset.shares || []) (state.shares[made[c].id] ||= {})[made[s].id] = v;
+    for (const [s, c, v] of preset.pathEta || []) state.pathEta[key(made[s].id, made[c].id)] = v;
+    if (preset.paper) applyCase(0);
+    prevSym = {};
+    flashOn = false;
+  }
+
+  // The paper's hand-built A X = B, Eqs. (A1), (A2) and (2), solved as written.
+  function paperFlow(kind, { shaft, closure }) {
+    const m = PAPER.motor, ba = PAPER.battery, gb = PAPER.gearbox, gen = PAPER.generator, nBa = PAPER.packs;
+    const z = Array(9).fill(0), ones = Array(9).fill(1);
+    const motorRows = (n) => shaft.map((_, i) => Array.from({ length: n }, (_, j) => (j === i ? 1 : 0)));
+    const lift = (x) => x.slice(0, 8).reduce((a, b) => a + b, 0);
+    if (kind === "all-electric") {
+      // Unknowns: 9 motor shaft powers, P_batt, E_dot_batt, P_1.
+      const x = gauss([...motorRows(12), [...ones, 0, 0, -m], [...z, nBa, 0, -1], [...z, nBa / ba, 1, 0]], [...shaft, 0, 0, 0]);
+      return { lm: lift(x), cm: x[8], batt: x[11] };
+    }
+    if (kind === "turboelectric") {
+      // Unknowns: 9 motors, P_ts, P_gb, P_gen, P_2, per turbogenerator.
+      const nTg = 3;
+      const x = gauss([...motorRows(13), [...ones, 0, 0, 0, -m], [...z, gb, -1, 0, 0], [...z, 0, gen, -1, 0], [...z, 0, 0, nTg, -1]], [...shaft, 0, 0, 0, 0]);
+      return { lm: lift(x), cm: x[8], gen: nTg * x[11], ts: nTg * x[9] };
+    }
+    // Unknowns: 9 motors, P_batt, E_dot_batt, P_1, P_2, P_ts, P_gb, P_gen, P_rc; the closure gives rows 16-17.
+    const nTg = 2, [[a1, b1, g1, d1, r1], [a2, b2, g2, d2, r2]] = closure;
+    const x = gauss([
+      ...motorRows(17),
+      [...ones, 0, 0, -m, -m, 0, 0, 0, 0],
+      [...z, nBa, 0, -1, 0, 0, 0, 0, 0],
+      [...z, nBa / ba, 1, 0, 0, 0, 0, 0, -ba],
+      [...z, 0, 0, 0, 0, gb, -1, 0, 0],
+      [...z, 0, 0, 0, 0, 0, gen, -1, 0],
+      [...z, 0, 0, 0, -1, 0, 0, nTg, -1],
+      [...z, 0, 0, a1, b1, g1, 0, 0, d1],
+      [...z, 0, 0, a2, b2, g2, 0, 0, d2],
+    ], [...shaft, 0, 0, 0, 0, 0, 0, r1, r2]);
+    return { lm: lift(x), cm: x[8], batt: x[11], gen: nTg * x[15], ts: nTg * x[13], fraction: x[11] / (x[11] + x[12]) };
+  }
+
+  // Load a paper operating point: its thrust power, how thrust divides between the
+  // lift and cruise rotors, and in the hybrid the battery share the paper solves for.
+  function applyCase(index) {
+    const preset = PRESETS[state.preset], c = preset.paper.cases[index], ref = paperFlow(preset.paper.kind, c);
+    const lift = c.shaft.slice(0, 8).reduce((a, b) => a + b, 0), cruise = c.shaft[8];
+    state.paperCase = index;
+    state.thrustKw = lift + cruise;
+    const thr = byKey("thr"), lp = byKey("lp"), batt = byKey("batt");
+    if (thr && lp) state.shares[thr.id] = { [lp.id]: lift / (lift + cruise) };
+    if (batt && ref.fraction != null) for (const motor of [byKey("lm"), byKey("cm")]) if (motor) state.shares[motor.id] = { [batt.id]: ref.fraction };
+  }
+
+  function labels() {
+    const count = {}, seen = {}, out = {};
+    for (const n of state.nodes) count[n.type] = (count[n.type] || 0) + 1;
+    for (const n of state.nodes) {
+      seen[n.type] = (seen[n.type] || 0) + 1;
+      if (n.label) {
+        out[n.id] = { name: n.label, sym: n.sym };
+        continue;
+      }
+      const k = count[n.type] > 1 ? String(seen[n.type]) : "";
+      out[n.id] = { name: TYPES[n.type].label + (k ? ` ${k}` : ""), sym: TYPES[n.type].sym + k };
+    }
+    return out;
+  }
+
+  // Suppliers in node order; all but the last take a bounded fraction, the last the remainder.
+  function shareList(id) {
+    const sup = suppliers(id), stored = state.shares[id] || {};
+    let used = 0;
+    return sup.map((s, i) => {
+      if (sup.length === 1) return { s, value: 1, free: false };
+      if (i < sup.length - 1) {
+        const value = s.id in stored ? stored[s.id] : 1 / sup.length;
+        used += value;
+        return { s, value, free: true };
+      }
+      return { s, value: 1 - used, free: false, remainder: true };
+    });
+  }
+
+  function findCycle() {
+    const color = {}, stack = [];
+    const visit = (u) => {
+      color[u.id] = 1;
+      stack.push(u.id);
+      for (const v of consumers(u.id)) {
+        if (color[v.id] === 1) return stack.slice(stack.indexOf(v.id)).concat(v.id);
+        if (!color[v.id]) {
+          const found = visit(v);
+          if (found) return found;
+        }
+      }
+      color[u.id] = 2;
+      stack.pop();
+      return null;
+    };
+    for (const n of state.nodes) {
+      if (!color[n.id]) {
+        const found = visit(n);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  function gauss(A, b) {
+    const n = b.length, M = A.map((row, i) => [...row, b[i]]);
+    for (let col = 0; col < n; col++) {
+      let pivot = col;
+      for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+      if (Math.abs(M[pivot][col]) < 1e-12) return null;
+      [M[col], M[pivot]] = [M[pivot], M[col]];
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const f = M[r][col] / M[col][col];
+        if (f) for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+      }
+    }
+    return M.map((row, i) => row[n] / row[i]);
+  }
+
+  // Downstream Eq. (27): P = M P + P0, with M[s, c] = lambda[s, c] / (eta_c eta_sc).
+  function solve() {
+    const nodes = state.nodes, index = new Map(nodes.map((n, i) => [n.id, i]));
+    const lam = {};
+    for (const c of nodes) {
+      lam[c.id] = {};
+      for (const e of shareList(c.id)) lam[c.id][e.s.id] = e.value;
+    }
+    const cycle = findCycle();
+    if (cycle) return { cycle, lam };
+    const B = nodes.map((_, i) => nodes.map((_, j) => (i === j ? 1 : 0)));
+    for (const c of nodes) for (const [s, v] of Object.entries(lam[c.id])) B[index.get(s)][index.get(c.id)] -= v / (c.eff * etaOf(s, c.id));
+    const P0 = nodes.map((n) => (n.type === "thrust" ? state.thrustKw : 0));
+    const x = gauss(B, P0);
+    if (!x) return { singular: true, lam };
+    const P = Object.fromEntries(nodes.map((n, i) => [n.id, x[i]]));
+    const flow = {};
+    for (const c of nodes) for (const [s, v] of Object.entries(lam[c.id])) flow[key(s, c.id)] = (v * P[c.id]) / (c.eff * etaOf(s, c.id));
+    return { P, flow, lam };
+  }
+
+  const outsideRules = () => new Set([...state.edges].filter((k) => {
+    const [s, c] = k.split(">").map(byId);
+    return !PORTS[`${s.type}>${c.type}`];
+  }));
+
+  function effCell(n, L) {
+    if (TYPES[n.type].eff == null) {
+      const engine = state.psfc == null ? "1" : "in psfc";
+      return `<span class="na">${{ engine, battery: "source", fuel: "source", thrust: "demand" }[n.type]}</span>`;
+    }
+    return `<input type="number" min="0.3" max="1" step="any" value="${fmtEta(n.eff)}" data-eff="${n.id}" aria-label="Efficiency of ${L[n.id].name}">`;
+  }
+
+  function renderMatrix(L) {
+    const nodes = state.nodes, bad = outsideRules();
+    let h = '<table class="matrix"><thead><tr><th></th>';
+    for (const c of nodes) {
+      const split = suppliers(c.id).length > 1;
+      h += `<th class="colh${split ? " split" : ""}" scope="col" title="${L[c.id].name}">${split ? '<span class="lam">λ</span>' : ""}${L[c.id].sym}</th>`;
+    }
+    h += '<th class="colh" scope="col" title="Component efficiency">η</th></tr></thead><tbody>';
+    for (const s of nodes) {
+      h += `<tr><th class="rowh" scope="row"><button class="rm" type="button" data-rm="${s.id}" aria-label="Remove ${L[s.id].name}"${s.type === "thrust" ? " disabled" : ""}>×</button>${L[s.id].name}<span class="sym">${L[s.id].sym}</span></th>`;
+      for (const c of nodes) {
+        if (s.id === c.id) { h += '<td><button class="cell" type="button" disabled aria-label="Diagonal">·</button></td>'; continue; }
+        const k = key(s.id, c.id), on = state.edges.has(k);
+        h += `<td><button class="cell${on ? " on" : ""}${on && bad.has(k) ? " off-rule" : ""}" type="button" data-edge="${k}" aria-pressed="${on}" aria-label="${on ? "Disconnect" : "Connect"} ${L[s.id].name} to ${L[c.id].name}" title="${L[s.id].name} → ${L[c.id].name}">${on ? 1 : 0}</button></td>`;
+      }
+      h += `<td class="eff">${effCell(s, L)}</td></tr>`;
+    }
+    $("#matrix").innerHTML = h + "</tbody></table>";
+  }
+
+  function renderGraph(L, res) {
+    // Column pitch leaves 60 units between boxes for the arrows and their kW labels.
+    const NW = 112, NH = 52, GAP = 172, ROW = 96, PAD = 16;
+    const cols = {};
+    for (const n of state.nodes) (cols[TYPES[n.type].col] ||= []).push(n);
+    const rows = Math.max(3, ...Object.values(cols).map((list) => list.length));
+    const W = 2 * PAD + 5 * GAP + NW, H = rows * ROW + 2 * PAD;
+    const pos = {};
+    for (const [col, list] of Object.entries(cols)) {
+      list.sort((a, b) => (a.type === b.type ? a.serial - b.serial : a.type === "generator" ? -1 : 1));
+      list.forEach((n, i) => { pos[n.id] = { x: PAD + Number(col) * GAP, y: H / 2 + (i - (list.length - 1) / 2) * ROW - NH / 2 }; });
+    }
+    const bad = outsideRules();
+    const maxFlow = Math.max(1e-9, ...Object.values(res.flow || {}).map(Math.abs));
+    let edges = "", tags = "";
+    for (const k of state.edges) {
+      const [s, c] = k.split(">"), a = pos[s], b = pos[c];
+      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const dx = Math.max(44, Math.abs(x2 - x1) / 2);
+      const f = res.flow ? res.flow[k] : null;
+      const width = f == null ? 2 : 1.5 + (9 * Math.abs(f)) / maxFlow;
+      const cls = `edge${bad.has(k) ? " bad" : ""}${f != null && f < -1e-9 ? " neg" : ""}`;
+      edges += `<path d="M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}" class="${cls}" stroke-width="${width.toFixed(2)}" marker-end="url(#${bad.has(k) ? "arrow-o" : "arrow"})"/>`;
+      // Connections carrying no power stay unlabeled, so the graph reads at a glance.
+      if (f != null && Math.abs(f) >= 0.05) tags += `<text class="elabel" x="${(0.125 * x1 + 0.375 * (x1 + dx) + 0.375 * (x2 - dx) + 0.125 * x2).toFixed(1)}" y="${((y1 + y2) / 2 - 8).toFixed(1)}" text-anchor="middle">${fmt(f)}</text>`;
+    }
+    let nodes = "";
+    for (const n of state.nodes) {
+      const p = pos[n.id], cx = p.x + NW / 2, name = L[n.id].name;
+      const P = res.P ? res.P[n.id] : null;
+      const value = P == null ? "not solved" : n.type === "fuel" && state.psfc != null ? `${fmt(P * state.psfc)} kg/h` : `${fmt(P)} kW`;
+      const idle = !state.edges.size || (!consumers(n.id).length && n.type !== "thrust");
+      nodes += `<g class="node${suppliers(n.id).length > 1 ? " split" : ""}${idle ? " idle" : ""}"><rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="${NH / 2}"/>`
+        + `<text class="nname" x="${cx}" y="${p.y + 22}" text-anchor="middle"${name.length > 12 ? ' style="font-size:14px"' : ""}>${name}</text>`
+        + `<text class="nval" x="${cx}" y="${p.y + 42}" text-anchor="middle">${value}</text></g>`;
+    }
+    $("#graph").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Architecture graph with the power on every connection, in kW"><defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker><marker id="arrow-o" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path class="arrow-o" d="M0,0 L10,5 L0,10 z"/></marker></defs>${edges}${nodes}${tags}</svg>`;
+  }
+
+  function equation(n, L, res) {
+    const P = (id) => `P<sub>${L[id].sym}</sub>`;
+    const solved = Boolean(res.P);
+    if (n.type === "thrust") {
+      return { sym: `${P(n.id)} = P<sub>0</sub>`, num: solved ? `= <b>${fmt(res.P[n.id])} kW</b><span class="tag">demand</span>` : "not solved" };
+    }
+    const cons = consumers(n.id);
+    if (!cons.length) return { sym: `${P(n.id)} = 0`, num: '<span class="tag">nothing draws on it</span>' };
+    const symTerms = [], numTerms = [];
+    for (const c of cons) {
+      const list = shareList(c.id), eff = TYPES[c.type].eff != null, path = key(n.id, c.id) in state.pathEta;
+      const lam = (e) => `λ<sub>${L[e.s.id].sym},${L[c.id].sym}</sub>`;
+      let lamSym = "", lamNum = "";
+      if (list.length > 1) {
+        const me = list.find((e) => e.s.id === n.id);
+        lamSym = me.free ? `${lam(me)} · ` : `(1 − ${list.filter((e) => e.free).map(lam).join(" − ")}) · `;
+        lamNum = `${me.value.toFixed(2)} × `;
+      }
+      symTerms.push(`${lamSym}${P(c.id)}${eff ? ` / η<sub>${L[c.id].sym}</sub>` : ""}${path ? ` / η<sub>${L[n.id].sym},${L[c.id].sym}</sub>` : ""}`);
+      numTerms.push(`${lamNum}${solved ? fmt(res.P[c.id]) : "?"}${eff ? ` / ${fmtEta(c.eff)}` : ""}${path ? ` / ${fmtEta(etaOf(n.id, c.id))}` : ""}`);
+    }
+    let num = solved ? `= ${numTerms.join(" + ")} = <b>${fmt(res.P[n.id])} kW</b>` : "not solved";
+    if (solved && n.type === "fuel" && state.psfc != null) num += `<span class="tag">${fmt(res.P[n.id] * state.psfc)} kg/h</span>`;
+    if (solved && n.type === "battery") num += '<span class="tag">source</span>';
+    return { sym: `${P(n.id)} = ${symTerms.join(" + ")}`, num };
+  }
+
+  function renderEquations(L, res) {
+    const box = $("#eqs");
+    const order = [...state.nodes].sort((a, b) => TYPES[b.type].col - TYPES[a.type].col || (a.type === b.type ? a.serial - b.serial : a.type === "battery" ? -1 : 1));
+    const elements = order.map((n) => {
+      const eq = equation(n, L, res);
+      let el = box.querySelector(`[data-eq="${n.id}"]`);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "eq";
+        el.dataset.eq = n.id;
+        el.innerHTML = '<div class="sym"></div><div class="num"></div>';
+      }
+      if (prevSym[n.id] !== eq.sym) {
+        el.firstChild.innerHTML = eq.sym;
+        if (flashOn) {
+          el.classList.remove("flash");
+          void el.offsetWidth;
+          el.classList.add("flash");
+        }
+        prevSym[n.id] = eq.sym;
+      }
+      el.lastChild.innerHTML = eq.num;
+      return el;
+    });
+    const current = [...box.children].map((el) => el.dataset.eq).join(",");
+    if (current !== order.map((n) => n.id).join(",")) box.replaceChildren(...elements);
+    flashOn = true;
+  }
+
+  // The paper's operating points, so the eVTOL presets can be set to each case in the paper.
+  function renderCases() {
+    const preset = PRESETS[state.preset], box = $("#paper-cases");
+    box.hidden = !preset.paper;
+    box.innerHTML = preset.paper ? preset.paper.cases.map((x, i) =>
+      `<button type="button" class="${i === state.paperCase ? "on" : ""}" data-case="${i}" aria-pressed="${i === state.paperCase}">${x.name}</button>`).join("") : "";
+  }
+
+  function renderSummary(res) {
+    const total = (type) => state.nodes.filter((n) => n.type === type).reduce((sum, n) => sum + res.P[n.id], 0);
+    $("#s-thrust").textContent = `${state.thrustKw} kW`;
+    $("#s-fuel").textContent = !res.P ? "not solved" : state.psfc == null ? "no psfc given" : `${fmt(total("fuel") * state.psfc)} kg/h`;
+    $("#s-batt").textContent = res.P ? `${fmt(total("battery"))} kW` : "not solved";
+    $("#foot-note").textContent = PRESETS[state.preset].note || CARAVAN_NOTE;
+  }
+
+  function syncThrust() {
+    $("#thrust").value = state.thrustKw;
+    $("#thrust-out").textContent = `${state.thrustKw} kW`;
+  }
+
+  function rebuild() {
+    renderMatrix(labels());
+    renderCases();
+  }
+
+  function update() {
+    const L = labels(), res = solve();
+    renderGraph(L, res);
+    renderEquations(L, res);
+    renderSummary(res);
+  }
+
+  function reload(name) {
+    loadPreset(name);
+    syncThrust();
+    rebuild();
+    update();
+  }
+
+  const select = $("#preset"), groups = {};
+  for (const [k, p] of Object.entries(PRESETS)) (groups[p.group || CARAVAN] ||= []).push(`<option value="${k}">${p.name}</option>`);
+  select.innerHTML = Object.entries(groups).map(([g, options]) => `<optgroup label="${g}">${options.join("")}</optgroup>`).join("");
+  select.addEventListener("change", () => reload(select.value));
+  $("#reset").addEventListener("click", () => reload(state.preset));
+  $("#thrust").addEventListener("input", (e) => {
+    state.thrustKw = Number(e.target.value);
+    $("#thrust-out").textContent = `${state.thrustKw} kW`;
+    update();
+  });
+  $("#second-prop").addEventListener("click", () => {
+    const thrust = state.nodes.find((n) => n.type === "thrust");
+    const driver = state.nodes.find((n) => n.type === "motor") || state.nodes.find((n) => n.type === "engine");
+    const prop = addNode("propeller");
+    if (driver) state.edges.add(key(driver.id, prop.id));
+    state.edges.add(key(prop.id, thrust.id));
+    rebuild();
+    update();
+  });
+  $("#addbar").addEventListener("click", (e) => {
+    const type = e.target.closest("[data-add]")?.dataset.add;
+    if (!type) return;
+    addNode(type);
+    rebuild();
+    update();
+  });
+  $("#matrix").addEventListener("click", (e) => {
+    const cell = e.target.closest("[data-edge]"), rm = e.target.closest("[data-rm]");
+    if (cell) {
+      const k = cell.dataset.edge;
+      state.edges.has(k) ? state.edges.delete(k) : state.edges.add(k);
+      rebuild();
+      update();
+      document.querySelector(`[data-edge="${k}"]`)?.focus();
+    } else if (rm) {
+      removeNode(rm.dataset.rm);
+      rebuild();
+      update();
+    }
+  });
+  $("#matrix").addEventListener("input", (e) => {
+    const id = e.target.dataset.eff;
+    if (!id) return;
+    const v = Number(e.target.value);
+    if (!(v >= 0.3 && v <= 1)) return;
+    byId(id).eff = v;
+    update();
+  });
+  $("#paper-cases").addEventListener("click", (e) => {
+    const button = e.target.closest("[data-case]");
+    if (!button) return;
+    applyCase(Number(button.dataset.case));
+    syncThrust();
+    rebuild();
+    update();
+  });
+
+  reload(state.preset);
+})();
+</script>
+
+</body>
+</html>
