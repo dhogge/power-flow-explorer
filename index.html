@@ -228,8 +228,8 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     propeller: { label: "Propeller", sym: "prop", col: 4, eff: 0.80 },
     thrust:    { label: "Thrust",    sym: "thr",  col: 5, eff: null },
   };
-  // ADORE's node order: alphabetical by component reference.
-  const ORDER = ["battery", "engine", "fuel", "generator", "motor", "propeller", "thrust"];
+  // Node order shared with the slides: sources first, then along the flow to thrust.
+  const ORDER = ["fuel", "battery", "engine", "generator", "motor", "propeller", "thrust"];
   // The ports in Propulsion/architectures/build_adore_model.py.
   const PORTS = {
     "fuel>engine": "fuel supply", "engine>generator": "engine shaft", "engine>propeller": "engine shaft",
