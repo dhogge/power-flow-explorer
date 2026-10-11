@@ -72,8 +72,8 @@ output, .num-out { font-family: var(--mono); color: var(--ink); font-variant-num
 .label { margin: 0; font-size: 12px; color: var(--muted); font-weight: 500; }
 
 .matrix-wrap { overflow-x: auto; container-type: inline-size; }
-/* Cells grow with the card: n of them fit beside the row names and the η column, and n + 1 rows fit in the window. */
-table.matrix { --cell: clamp(26px, min(calc((100cqi - 270px) / var(--n)), calc((100vh - 300px) / (var(--n) + 1))), 56px); border-collapse: separate; border-spacing: 3px; font-family: var(--mono); font-size: clamp(12px, calc(var(--cell) * 0.27), 15px); }
+/* Cells grow with the card: n of them fit beside the row names and the η column, and n + 1 rows fit in the window above the splits. */
+table.matrix { --cell: clamp(26px, min(calc((100cqi - 270px) / var(--n)), calc((100vh - 300px - var(--below, 0px)) / (var(--n) + 1))), 56px); border-collapse: separate; border-spacing: 3px; font-family: var(--mono); font-size: clamp(12px, calc(var(--cell) * 0.27), 15px); }
 table.matrix th { font-weight: 500; color: var(--muted); text-align: center; padding: 0 2px; }
 table.matrix th.colh { vertical-align: bottom; min-width: var(--cell); }
 table.matrix th.colh.split { color: var(--orange-text); }
@@ -98,6 +98,15 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
 .addbar .label { margin-right: 4px; }
 .chip { border: 0; background: var(--panel-2); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
 .chip:hover { color: var(--accent); background: var(--accent-soft); }
+.splits { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 14px 28px; padding-top: 14px; border-top: 1px solid var(--line); }
+.splits > .label { grid-column: 1 / -1; }
+.split-group { display: grid; grid-template-columns: auto auto minmax(90px, 1fr) auto; align-items: center; gap: 8px 12px; }
+.split-title { grid-column: 1 / -1; margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.lam-sym { font: 12.5px var(--mono); color: var(--orange-text); white-space: nowrap; }
+.from { font-size: 13px; color: var(--text); white-space: nowrap; }
+.split-group input[type="range"] { width: 100%; margin: 0; }
+.split-group .rest { font-size: 12px; color: var(--muted); }
+.split-group output { font: 12.5px var(--mono); min-width: 34px; text-align: right; }
 
 .graph svg { width: 100%; height: auto; display: block; max-height: 340px; }
 .edge { fill: none; stroke: var(--edge); stroke-linecap: round; }
@@ -169,7 +178,7 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
         <div class="card-head"><h2>Adjacency matrix A</h2><span class="hint">row → column</span></div>
         <div class="card-body">
           <div class="matrix-wrap" id="matrix"></div>
-          <p class="legend">Click a cell to connect or disconnect. A[row, column] = 1 means power flows from row to column. An orange <b>λ</b> marks a component with more than one supplier.</p>
+          <p class="legend">Click a cell to connect or disconnect. A[row, column] = 1 means power flows from row to column. An orange <b>λ</b> marks a component with more than one supplier; set its shares under Splits.</p>
           <div class="addbar" id="addbar">
             <span class="label">Add</span>
             <button class="chip" type="button" data-add="engine">+ Engine</button>
@@ -179,6 +188,7 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
             <button class="chip" type="button" data-add="battery">+ Battery</button>
             <button class="chip" type="button" data-add="fuel">+ Fuel tank</button>
           </div>
+          <div class="splits" id="splits" hidden></div>
         </div>
       </section>
     </div>
@@ -400,7 +410,7 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     return sup.map((s, i) => {
       if (sup.length === 1) return { s, value: 1, free: false };
       if (i < sup.length - 1) {
-        const value = s.id in stored ? stored[s.id] : 1 / sup.length;
+        const value = Math.max(0, Math.min(s.id in stored ? stored[s.id] : 1 / sup.length, 1 - used));
         used += value;
         return { s, value, free: true };
       }
@@ -501,6 +511,22 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
       h += `<td class="eff">${effCell(s, L)}</td></tr>`;
     }
     $("#matrix").innerHTML = h + "</tbody></table>";
+  }
+
+  // A slider for each bounded fraction; the last supplier takes the rest, as in the solve.
+  function renderSplits(L) {
+    const split = state.nodes.filter((c) => suppliers(c.id).length > 1), box = $("#splits");
+    box.hidden = !split.length;
+    box.innerHTML = '<p class="label">Splits</p>' + split.map((c) => {
+      const rows = shareList(c.id).map((e) => {
+        const k = key(e.s.id, c.id);
+        const control = e.free
+          ? `<input type="range" min="0" max="1" step="0.01" value="${e.value}" data-share="${k}" aria-label="Share of ${L[c.id].name}'s power from ${L[e.s.id].name}">`
+          : '<span class="rest">the rest</span>';
+        return `<span class="lam-sym">λ<sub>${L[e.s.id].sym},${L[c.id].sym}</sub></span><span class="from">${L[e.s.id].name}</span>${control}<output data-share-out="${k}">${e.value.toFixed(2)}</output>`;
+      }).join("");
+      return `<div class="split-group"><p class="split-title">Into ${L[c.id].name}</p>${rows}</div>`;
+    }).join("");
   }
 
   function renderGraph(L, res) {
@@ -620,7 +646,9 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
   }
 
   function rebuild() {
-    renderMatrix(labels());
+    const L = labels();
+    renderMatrix(L);
+    renderSplits(L);
     renderCases();
   }
 
@@ -684,6 +712,21 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     const v = Number(e.target.value);
     if (!(v >= 0.3 && v <= 1)) return;
     byId(id).eff = v;
+    update();
+  });
+  new ResizeObserver(() => {
+    const h = $("#splits").offsetHeight;
+    $("#matrix").style.setProperty("--below", `${h && h + 12}px`);
+  }).observe($("#splits"));
+  $("#splits").addEventListener("input", (e) => {
+    const k = e.target.dataset.share;
+    if (!k) return;
+    const [s, c] = k.split(">");
+    const others = shareList(c).filter((x) => x.free && x.s.id !== s).reduce((sum, x) => sum + x.value, 0);
+    const v = Math.min(Number(e.target.value), 1 - others);
+    e.target.value = v;
+    (state.shares[c] ||= {})[s] = v;
+    for (const x of shareList(c)) document.querySelector(`[data-share-out="${key(x.s.id, c)}"]`).textContent = x.value.toFixed(2);
     update();
   });
   $("#paper-cases").addEventListener("click", (e) => {
