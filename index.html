@@ -71,27 +71,28 @@ output, .num-out { font-family: var(--mono); color: var(--ink); font-variant-num
 .mono { font-family: var(--mono); }
 .label { margin: 0; font-size: 12px; color: var(--muted); font-weight: 500; }
 
-.matrix-wrap { overflow-x: auto; }
-table.matrix { border-collapse: separate; border-spacing: 2px; font-family: var(--mono); font-size: 12px; }
+.matrix-wrap { overflow-x: auto; container-type: inline-size; }
+/* Cells grow with the card: n of them fit beside the row names and the η column, and n + 1 rows fit in the window. */
+table.matrix { --cell: clamp(26px, min(calc((100cqi - 270px) / var(--n)), calc((100vh - 300px) / (var(--n) + 1))), 56px); border-collapse: separate; border-spacing: 3px; font-family: var(--mono); font-size: clamp(12px, calc(var(--cell) * 0.27), 15px); }
 table.matrix th { font-weight: 500; color: var(--muted); text-align: center; padding: 0 2px; }
-table.matrix th.colh { vertical-align: bottom; min-width: 26px; }
+table.matrix th.colh { vertical-align: bottom; min-width: var(--cell); }
 table.matrix th.colh.split { color: var(--orange-text); }
 .lam { display: block; font-size: 11px; line-height: 1.1; color: var(--orange-text); }
-table.matrix th.rowh { text-align: left; white-space: nowrap; font-family: var(--sans); font-size: 12.5px; color: var(--ink); padding-right: 6px; }
-.rowh .sym { font-family: var(--mono); color: var(--muted); font-size: 11px; margin-left: 5px; }
+table.matrix th.rowh { text-align: left; white-space: nowrap; font-family: var(--sans); font-size: clamp(12.5px, calc(var(--cell) * 0.3), 16px); color: var(--ink); padding-right: 8px; }
+.rowh .sym { font-family: var(--mono); color: var(--muted); font-size: 0.85em; margin-left: 6px; }
 .rm { border: 0; background: none; color: var(--muted); cursor: pointer; width: 18px; height: 18px; border-radius: 999px; line-height: 1; padding: 0; margin-right: 3px; font-size: 15px; }
 .rm:hover { color: var(--err); background: var(--err-bg); }
 .rm[disabled] { visibility: hidden; }
-.cell { width: 26px; height: 26px; border-radius: 8px; border: 0; background: var(--panel-2); color: var(--muted); font: 500 12.5px var(--mono); cursor: pointer; padding: 0; transition: transform 0.12s ease, background 0.12s ease; }
+.cell { width: var(--cell); height: var(--cell); border-radius: calc(var(--cell) * 0.28); border: 0; background: var(--panel-2); color: var(--muted); font: 500 clamp(12.5px, calc(var(--cell) * 0.32), 17px) var(--mono); cursor: pointer; padding: 0; transition: transform 0.12s ease, background 0.12s ease; }
 .cell:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .cell:active { transform: scale(0.94); }
 .cell.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .cell.on.off-rule { background: var(--orange-soft); color: var(--orange-text); box-shadow: inset 0 0 0 1.5px var(--orange); }
 .cell:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
 .cell:focus-visible, .btn:focus-visible, select:focus-visible, input:focus-visible, .rm:focus-visible, .chip:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
-td.eff { padding-left: 4px; }
-td.eff input { width: 54px; padding: 4px 5px; border: 0; border-radius: 6px; background: var(--panel-2); color: var(--ink); font: 11.5px var(--mono); }
-td.eff .na { font-size: 11.5px; color: var(--muted); font-family: var(--sans); white-space: nowrap; }
+td.eff { padding-left: 6px; }
+td.eff input { width: clamp(54px, calc(var(--cell) * 1.5), 80px); padding: 4px 6px; border: 0; border-radius: 8px; background: var(--panel-2); color: var(--ink); font: clamp(11.5px, calc(var(--cell) * 0.27), 15px) var(--mono); }
+td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: var(--muted); font-family: var(--sans); white-space: nowrap; }
 .legend { font-size: 12px; color: var(--muted); margin: 0; }
 .addbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .addbar .label { margin-right: 4px; }
@@ -484,7 +485,7 @@ td.eff .na { font-size: 11.5px; color: var(--muted); font-family: var(--sans); w
 
   function renderMatrix(L) {
     const nodes = state.nodes, bad = outsideRules();
-    let h = '<table class="matrix"><thead><tr><th></th>';
+    let h = `<table class="matrix" style="--n: ${nodes.length}"><thead><tr><th></th>`;
     for (const c of nodes) {
       const split = suppliers(c.id).length > 1;
       h += `<th class="colh${split ? " split" : ""}" scope="col" title="${L[c.id].name}">${split ? '<span class="lam">λ</span>' : ""}${L[c.id].sym}</th>`;
@@ -697,6 +698,5 @@ td.eff .na { font-size: 11.5px; color: var(--muted); font-family: var(--sans); w
   reload(state.preset);
 })();
 </script>
-
 </body>
 </html>
