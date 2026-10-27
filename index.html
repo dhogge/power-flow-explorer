@@ -137,6 +137,8 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
 @keyframes flash { 0% { background: var(--orange-soft); box-shadow: inset 0 0 0 1.5px var(--orange); } 100% { background: var(--panel-2); box-shadow: inset 0 0 0 1.5px transparent; } }
 @media (prefers-reduced-motion: reduce) { .eq.flash { animation: none; box-shadow: inset 0 0 0 1.5px var(--orange); } .cell { transition: none; } }
 .foot { font-size: 11.5px; color: var(--muted); margin: 0; }
+.status { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--panel-2); color: var(--muted); font-size: 13px; }
+.status.err { background: var(--warn-bg); color: var(--warn); }
 
 [hidden] { display: none !important; }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--panel); }
@@ -157,7 +159,7 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
   <header class="top">
     <div class="brand">
       <h1>Power Flow Explorer</h1>
-      <p>Edit the adjacency matrix. Every change re-solves P = (I − M)<sup>−1</sup> P<sub>0</sub>.</p>
+      <p>Edit the adjacency matrix. Every change runs the research code's power_flow.py to solve P = (I − M)<sup>−1</sup> P<sub>0</sub>.</p>
     </div>
     <div class="controls">
       <label class="ctl" for="preset">Start from
@@ -202,19 +204,21 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
       <section class="card grow">
         <div class="card-head"><h2>Power flow</h2><span class="formula">P = M P + P<sub>0</sub> → P = (I − M)<sup>−1</sup> P<sub>0</sub></span></div>
         <div class="card-body">
+          <p class="status" id="py-status" role="status"></p>
           <div class="summary">
             <div class="stat"><div class="k">Thrust power</div><div class="v" id="s-thrust">—</div></div>
             <div class="stat"><div class="k">Fuel flow</div><div class="v" id="s-fuel">—</div></div>
             <div class="stat"><div class="k">Battery power</div><div class="v" id="s-batt">—</div></div>
           </div>
           <div class="eqs" id="eqs"></div>
-          <p class="foot">Each component supplies its share λ of what its consumers draw, divided by the efficiencies on the way. The solve matches Mokotoff &amp; Cinar's Eq. (27). <span id="foot-note"></span></p>
+          <p class="foot">Each component supplies its share λ of what its consumers draw, divided by the efficiencies on the way. The solve is <span class="mono">Propulsion/power_flow.py</span><span id="source"></span>, Mokotoff &amp; Cinar's Eq. (27), run in the browser with Pyodide. <span id="foot-note"></span></p>
         </div>
       </section>
     </div>
   </main>
 </div>
 
+<script src="https://cdn.jsdelivr.net/pyodide/v0.29.5/full/pyodide.js"></script>
 <script>
 (() => {
   // kg of fuel per kWh of engine shaft power (series-hybrid Caravan psfc).
@@ -300,6 +304,9 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
   let serial = 0;
   let prevSym = {};
   let flashOn = false;
+  // The Python solve once Pyodide has loaded; until then, what the page shows instead.
+  let pySolve = null;
+  let pyNote = { status: "Loading Python and numpy (Pyodide)…" };
 
   const $ = (s) => document.querySelector(s);
   const key = (s, c) => `${s}>${c}`;
@@ -419,29 +426,25 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     });
   }
 
-  function findCycle() {
-    const color = {}, stack = [];
-    const visit = (u) => {
-      color[u.id] = 1;
-      stack.push(u.id);
-      for (const v of consumers(u.id)) {
-        if (color[v.id] === 1) return stack.slice(stack.indexOf(v.id)).concat(v.id);
-        if (!color[v.id]) {
-          const found = visit(v);
-          if (found) return found;
-        }
-      }
-      color[u.id] = 2;
-      stack.pop();
-      return null;
+  // Python's sources come from python/, where Propulsion/sync_explorer.py in the
+  // research code copies them; source.json lists them and their commit.
+  async function loadPython() {
+    const get = async (path) => {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+      return response;
     };
-    for (const n of state.nodes) {
-      if (!color[n.id]) {
-        const found = visit(n);
-        if (found) return found;
-      }
+    const pyodide = await loadPyodide();
+    await pyodide.loadPackage("numpy");
+    const source = await (await get("python/source.json")).json();
+    for (const name of [...source.files, "explorer.py"]) {
+      const file = `/home/pyodide/python/${name}`;
+      pyodide.FS.mkdirTree(file.slice(0, file.lastIndexOf("/")));
+      pyodide.FS.writeFile(file, await (await get(`python/${name}`)).text());
     }
-    return null;
+    pyodide.runPython("import importlib, sys; sys.path.insert(0, '/home/pyodide/python'); importlib.invalidate_caches()");
+    pySolve = pyodide.pyimport("explorer").solve;
+    return source;
   }
 
   function gauss(A, b) {
@@ -460,25 +463,29 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     return M.map((row, i) => row[n] / row[i]);
   }
 
-  // Downstream Eq. (27): P = M P + P0, with M[s, c] = lambda[s, c] / (eta_c eta_sc).
+  // Downstream Eq. (27), P = M P + P0, solved by power_flow.py from A, lambda^d
+  // (consumer rows), the component and path efficiencies, and the thrust demand.
   function solve() {
-    const nodes = state.nodes, index = new Map(nodes.map((n, i) => [n.id, i]));
-    const lam = {};
+    if (!pySolve) return pyNote;
+    const nodes = state.nodes, lam = {};
     for (const c of nodes) {
       lam[c.id] = {};
       for (const e of shareList(c.id)) lam[c.id][e.s.id] = e.value;
     }
-    const cycle = findCycle();
-    if (cycle) return { cycle, lam };
-    const B = nodes.map((_, i) => nodes.map((_, j) => (i === j ? 1 : 0)));
-    for (const c of nodes) for (const [s, v] of Object.entries(lam[c.id])) B[index.get(s)][index.get(c.id)] -= v / (c.eff * etaOf(s, c.id));
-    const P0 = nodes.map((n) => (n.type === "thrust" ? state.thrustKw : 0));
-    const x = gauss(B, P0);
-    if (!x) return { singular: true, lam };
-    const P = Object.fromEntries(nodes.map((n, i) => [n.id, x[i]]));
+    const out = JSON.parse(pySolve(JSON.stringify({
+      architecture: nodes.map((s) => nodes.map((c) => Number(state.edges.has(key(s.id, c.id))))),
+      split: nodes.map((c) => nodes.map((s) => lam[c.id][s.id] ?? 0)),
+      efficiency: nodes.map((n) => n.eff),
+      path: nodes.map((s) => nodes.map((c) => etaOf(s.id, c.id))),
+      power: nodes.map((n) => (n.type === "thrust" ? state.thrustKw : 0)),
+    })));
+    if (out.error) return { error: `power_flow.py: ${out.error}` };
+    const P = Object.fromEntries(nodes.map((n, i) => [n.id, out.power[i]]));
     const flow = {};
-    for (const c of nodes) for (const [s, v] of Object.entries(lam[c.id])) flow[key(s, c.id)] = (v * P[c.id]) / (c.eff * etaOf(s, c.id));
-    return { P, flow, lam };
+    nodes.forEach((s, i) => nodes.forEach((c, j) => {
+      if (state.edges.has(key(s.id, c.id))) flow[key(s.id, c.id)] = out.flow[i][j];
+    }));
+    return { P, flow };
   }
 
   const outsideRules = () => new Set([...state.edges].filter((k) => {
@@ -641,6 +648,13 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     $("#foot-note").textContent = PRESETS[state.preset].note || CARAVAN_NOTE;
   }
 
+  function renderStatus(res) {
+    const box = $("#py-status");
+    box.hidden = !res.status && !res.error;
+    box.textContent = res.error || res.status || "";
+    box.classList.toggle("err", Boolean(res.error));
+  }
+
   function syncThrust() {
     $("#thrust").value = state.thrustKw;
     $("#thrust-out").textContent = `${state.thrustKw} kW`;
@@ -658,6 +672,7 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
     renderGraph(L, res);
     renderEquations(L, res);
     renderSummary(res);
+    renderStatus(res);
   }
 
   function reload(name) {
@@ -740,6 +755,13 @@ td.eff .na { font-size: clamp(11.5px, calc(var(--cell) * 0.25), 14px); color: va
   });
 
   reload(state.preset);
+  loadPython().then((source) => {
+    $("#source").textContent = ` (research commit ${source.commit}${source.modified ? " plus uncommitted changes" : ""})`;
+    update();
+  }, (error) => {
+    pyNote = { error: `Couldn't load the Python solve: ${error.message}` };
+    update();
+  });
 })();
 </script>
 </body>
